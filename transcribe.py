@@ -19,25 +19,25 @@ def decode_base64_to_audio_file(b64_str):
 
         audio_data = base64.b64decode(b64_str)
         audio_stream = io.BytesIO(audio_data)
-        audio_stream.name = "audio.mp3"
+        audio_stream.name = "input_audio"
 
-        duration, channels, sample_rate = validate_audio(audio_stream)
-        print(f"Audio Duration: {duration:.2f} seconds, Channels: {channels}, Sample Rate: {sample_rate} Hz")
+        input_format = detect_audio_format(audio_stream)
+        print(f"Detected audio format: {input_format}")
 
-        audio_stream = reencode_mp3(audio_stream)
+        audio_stream = reencode_audio(audio_stream, input_format)
         return audio_stream
     except Exception as e:
         raise ValueError(f"Failed to decode base64 string to audio: {e}")
 
-def validate_audio(audio_stream):
+def detect_audio_format(audio_stream):
     try:
         audio_stream.seek(0)
-        temp_input = "temp.mp3"
+        temp_input = "temp_input"
         with open(temp_input, "wb") as f:
             f.write(audio_stream.read())
 
         result = subprocess.run(
-            ["ffprobe", "-i", temp_input, "-show_entries", "format=duration", "-v", "quiet", "-of", "csv=p=0"],
+            ["ffprobe", "-i", temp_input, "-show_entries", "format=format_name", "-v", "quiet", "-of", "csv=p=0"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True
@@ -46,22 +46,17 @@ def validate_audio(audio_stream):
         os.remove(temp_input)
 
         if result.returncode != 0:
-            raise ValueError("Invalid MP3 file format.")
+            raise ValueError("Unable to detect audio format.")
 
-        duration = float(result.stdout.strip())
-
-        if duration < 0.01:
-            raise ValueError("Audio file is too short.")
-
-        return duration, None, None
+        return result.stdout.strip()
     except Exception as e:
-        raise ValueError(f"Invalid MP3 file format: {e}")
+        raise ValueError(f"Error detecting audio format: {e}")
 
-def reencode_mp3(audio_stream):
+def reencode_audio(audio_stream, input_format):
     try:
         audio_stream.seek(0)
-        temp_input = "input.mp3"
-        temp_output = "output.mp3"
+        temp_input = f"input.{input_format}"
+        temp_output = "output.wav"
 
         with open(temp_input, "wb") as f:
             f.write(audio_stream.read())
@@ -73,7 +68,7 @@ def reencode_mp3(audio_stream):
 
         with open(temp_output, "rb") as f:
             reencoded_audio = io.BytesIO(f.read())
-            reencoded_audio.name = "audio.mp3"
+            reencoded_audio.name = "audio.wav"
 
         os.remove(temp_input)
         os.remove(temp_output)
@@ -81,20 +76,20 @@ def reencode_mp3(audio_stream):
         return reencoded_audio
     except subprocess.CalledProcessError as e:
         print(f"FFmpeg error: {e.stderr.decode()}")
-        raise RuntimeError(f"Failed to re-encode MP3 file: {e}")
+        raise RuntimeError(f"Failed to re-encode audio file: {e}")
 
 def transcribe_audio(audio_stream):
     try:
         audio_stream.seek(0)
-        files = {'file': ("audio.mp3", audio_stream, 'audio/mp3')}
+        files = {'file': ("audio.wav", audio_stream, 'audio/wav')}
         headers = {'Authorization': f'Bearer {GROQ_API_KEY}'}
         data = {'model': 'whisper-large-v3-turbo'}
 
         print(f"Sending request to {GROQ_API_URL}...")
         response = requests.post(GROQ_API_URL, headers=headers, files=files, data=data)
 
-        print(f"Response Status Code: {response.status_code}")
-        print(f"Response JSON: {response.json()}")
+        # print(f"Response Status Code: {response.status_code}")
+        # print(f"Response JSON: {response.json()}")
 
         if response.status_code == 200:
             transcription = response.json().get('text', 'No transcription found')
