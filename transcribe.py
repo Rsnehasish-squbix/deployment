@@ -59,7 +59,7 @@ def reencode_audio(audio_stream, input_format):
         temp_output = "output.wav"
 
         with open(temp_input, "wb") as f:
-            f.write(audio_stream.read())
+            f.write(audio_stream.read()) 
 
         subprocess.run(
             ["ffmpeg", "-y", "-i", temp_input, "-ar", "16000", "-ac", "1", temp_output],
